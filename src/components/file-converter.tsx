@@ -99,10 +99,15 @@ export function FileConverter() {
       
       updateQueueItem(item.id, { status: 'completed', progress: 100 });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      const errorMessage = error instanceof Error ? error.message : 'An unknown conversion error occurred';
       updateQueueItem(item.id, { status: 'error', progress: 0, error: errorMessage });
+      toast({
+          title: `Error converting '${item.file.name}'`,
+          description: errorMessage,
+          variant: 'destructive',
+      });
     }
-  }, [updateQueueItem]);
+  }, [updateQueueItem, toast]);
 
   const handleConvertClick = async () => {
     if (selectedFiles.length === 0) {
@@ -163,7 +168,7 @@ export function FileConverter() {
           <Wand2 className="h-8 w-8 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">ParaConverter</h1>
+          <h1 className="text-3xl font-bold text-foreground">ESOConverter</h1>
           <p className="text-muted-foreground">Fast, multi-file conversion.</p>
         </div>
       </header>

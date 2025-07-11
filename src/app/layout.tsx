@@ -3,7 +3,7 @@ import './globals.css';
 import { ToasterWrapper } from "@/components/toaster-wrapper";
 
 export const metadata: Metadata = {
-  title: 'ParaConverter',
+  title: 'ESOConverter',
   description: 'A multi-threaded file conversion utility for efficiently changing file types.',
 };
 
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning={true}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
