@@ -53,12 +53,14 @@ async function performConversion() {
     parentPort.postMessage({ convertedImageUri });
 
   } catch (err) {
-     const error = err as Error;
-     // If there's an error, we post it back to the main thread.
-     // The main thread will reject the promise.
-     parentPort.postMessage({ error: error.message });
+     if (parentPort) {
+        const error = err as Error;
+        // If there's an error, we post it back to the main thread.
+        // The main thread will reject the promise.
+        parentPort.postMessage({ error: error.message });
+     }
      // It is important to throw the error here to cause the worker to exit with a non-zero code
-     throw error;
+     throw err;
   }
 }
 

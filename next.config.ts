@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -18,19 +19,28 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.module.rules.push({
-        test: /src[\\/]workers[\\/].+\.ts$/,
-        loader: 'ts-loader',
-        options: {
-          transpileOnly: true,
-        },
-      });
+  webpack: (config, { isServer, dev }) => {
+    if (isServer && !dev) {
+      const workerPath = path.join(__dirname, 'src/workers/image-converter-worker.ts');
+      
+      config.entry = {
+        ...config.entry,
+        'workers/image-converter-worker': workerPath,
+      };
 
-      // This is necessary to ensure the worker files are outputted to the correct directory
-      // when the server is built.
-      config.output.globalObject = 'this';
+      config.output = {
+        ...config.output,
+        // The default is `[name].js` which we want to override for workers.
+        filename: (pathData: any) => {
+          if (pathData.chunk.name.startsWith('workers/')) {
+            return '[name].js';
+          }
+          // The default Next.js server entry point.
+          return 'server.js';
+        },
+        // This is necessary to prevent a crash when the server starts.
+        globalObject: 'this',
+      };
     }
     return config;
   },
