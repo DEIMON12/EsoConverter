@@ -57,6 +57,7 @@ export function FileConverter() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logIdCounter = useRef(0);
+  const fileIdCounter = useRef(0);
   const { toast } = useToast();
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
@@ -100,13 +101,16 @@ export function FileConverter() {
     setIsConverting(true);
     addLog(`Starting conversion for ${selectedFiles.length} file(s) to ${outputFormat.toUpperCase()}.`, 'success');
 
-    const queue: ConversionFile[] = selectedFiles.map((file, index) => ({
-      id: `${file.name}-${index}-${Date.now()}`,
-      file,
-      status: 'queued',
-      progress: 0,
-      outputName: `${file.name.split('.').slice(0, -1).join('.')}.${outputFormat}`,
-    }));
+    const queue: ConversionFile[] = selectedFiles.map((file) => {
+        const id = `${file.name}-${file.lastModified}-${fileIdCounter.current++}`;
+        return {
+          id,
+          file,
+          status: 'queued',
+          progress: 0,
+          outputName: `${file.name.split('.').slice(0, -1).join('.')}.${outputFormat}`,
+        };
+    });
     
     setConversionQueue(queue);
     setSelectedFiles([]);
@@ -233,9 +237,6 @@ export function FileConverter() {
                                 <SelectItem value="png">PNG</SelectItem>
                                 <SelectItem value="jpeg">JPEG</SelectItem>
                                 <SelectItem value="webp">WEBP</SelectItem>
-                                <SelectItem value="pdf" disabled>PDF (soon)</SelectItem>
-                                <SelectItem value="mp3" disabled>MP3 (soon)</SelectItem>
-                                <SelectItem value="wav" disabled>WAV (soon)</SelectItem>
                             </SelectContent>
                         </Select>
                     </CardContent>
