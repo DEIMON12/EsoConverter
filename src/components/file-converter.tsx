@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef, ChangeEvent, useMemo } from 'react';
+import { useState, useRef, ChangeEvent, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -54,13 +54,18 @@ export function FileConverter() {
   const [outputFormat, setOutputFormat] = useState<string>('png');
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isClient, setIsClient] = useState(false);
   
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logIdCounter = useRef(0);
-  const fileIdCounter = useRef(0);
   const { toast } = useToast();
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
+    if (!isClient) return;
     const newLog: LogEntry = {
       id: logIdCounter.current++,
       message,
@@ -101,8 +106,8 @@ export function FileConverter() {
     setIsConverting(true);
     addLog(`Starting conversion for ${selectedFiles.length} file(s) to ${outputFormat.toUpperCase()}.`, 'success');
 
-    const queue: ConversionFile[] = selectedFiles.map((file) => {
-        const id = `${file.name}-${file.lastModified}-${fileIdCounter.current++}`;
+    const queue: ConversionFile[] = selectedFiles.map((file, index) => {
+        const id = `${file.name}-${file.lastModified}-${index}`;
         return {
           id,
           file,
@@ -204,7 +209,7 @@ export function FileConverter() {
                                 <h3 className="font-medium mb-2">Selected files:</h3>
                                 <ScrollArea className="h-40 w-full rounded-md border p-2">
                                     {selectedFiles.map((file, index) => (
-                                        <div key={index} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-sm">
+                                        <div key={`${file.name}-${index}`} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-sm">
                                             <div className="flex items-center gap-2 truncate">
                                                 <FileIcon file={file} />
                                                 <span className="truncate">{file.name}</span>
