@@ -18,6 +18,22 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.module.rules.push({
+        test: /src[\\/]workers[\\/].+\.ts$/,
+        loader: 'ts-loader',
+        options: {
+          transpileOnly: true,
+        },
+      });
+
+      // This is necessary to ensure the worker files are outputted to the correct directory
+      // when the server is built.
+      config.output.globalObject = 'this';
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

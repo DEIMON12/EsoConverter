@@ -1,15 +1,16 @@
 
 'use server';
 /**
- * @fileOverview An image conversion utility.
+ * @fileOverview An image conversion utility that uses worker threads.
  *
- * - convertImage - A function that handles the image conversion process.
+ * - convertImage - A function that handles the image conversion process using a worker thread.
  * - ConvertImageInput - The input type for the convertImage function.
  * - ConvertImageOutput - The return type for the convertImage function.
  */
 
 import { z } from 'zod';
-import sharp from 'sharp';
+import { Worker } from 'worker_threads';
+import path from 'path';
 
 const ConvertImageInputSchema = z.object({
   imageDataUri: z
@@ -28,46 +29,30 @@ export type ConvertImageOutput = z.infer<typeof ConvertImageOutputSchema>;
 
 
 export async function convertImage(input: ConvertImageInput): Promise<ConvertImageOutput> {
-  const { imageDataUri, outputFormat } = ConvertImageInputSchema.parse(input);
+  return new Promise((resolve, reject) => {
+    // __dirname will be the output directory of the built server file,
+    // e.g., .next/server/app/
+    // We need to construct a path to our worker file from there.
+    // The worker file will be in .next/server/workers/image-converter-worker.js
+    const workerPath = path.resolve(process.cwd(), '.next/server/workers/image-converter-worker.js');
 
-  try {
-    const base64Data = imageDataUri.split(';base64,').pop();
-    if (!base64Data) {
-      throw new Error('Invalid data URI');
-    }
-    
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-    
-    let convertedBuffer: Buffer;
-    let mimeType: string;
+    const worker = new Worker(workerPath, {
+      workerData: input,
+    });
 
-    const sharpInstance = sharp(imageBuffer);
+    worker.on('message', (result: ConvertImageOutput) => {
+      resolve(result);
+    });
 
-    switch (outputFormat) {
-      case 'jpeg':
-        convertedBuffer = await sharpInstance.jpeg().toBuffer();
-        mimeType = 'image/jpeg';
-        break;
-      case 'png':
-        convertedBuffer = await sharpInstance.png().toBuffer();
-        mimeType = 'image/png';
-        break;
-      case 'webp':
-        convertedBuffer = await sharpInstance.webp().toBuffer();
-        mimeType = 'image/webp';
-        break;
-      default:
-        // This case should not be reachable due to the Zod schema validation
-        throw new Error(`Unsupported output format: ${outputFormat}`);
-    }
-    
-    const convertedBase64 = convertedBuffer.toString('base64');
-    const convertedImageUri = `data:${mimeType};base64,${convertedBase64}`;
-    
-    return { convertedImageUri };
-  } catch (err) {
-     const errorMessage = err instanceof Error ? err.message : 'Unknown conversion error';
-     console.error(`Conversion failed: ${errorMessage}`);
-     throw new Error(`Conversion failed: ${errorMessage}`);
-  }
+    worker.on('error', (error) => {
+      console.error(`Worker error: ${error.message}`);
+      reject(new Error(`Conversion failed: ${error.message}`));
+    });
+
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Worker stopped with exit code ${code}`));
+      }
+    });
+  });
 }
