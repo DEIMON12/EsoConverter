@@ -40,8 +40,17 @@ export async function convertImage(input: ConvertImageInput): Promise<ConvertIma
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Conversion failed');
+    let errorData;
+    try {
+      // Try to parse the error response as JSON
+      errorData = await response.json();
+    } catch (e) {
+      // If parsing fails, use the response text as the error
+      const text = await response.text();
+      throw new Error(`Conversion failed with status ${response.status}: ${text}`);
+    }
+    // Use the error from the JSON response, or a generic message
+    throw new Error(errorData?.error || 'An unknown conversion error occurred');
   }
 
   const result: ConvertImageOutput = await response.json();
