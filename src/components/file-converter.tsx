@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, ChangeEvent, useMemo, useCallback } from 'react';
@@ -122,7 +123,6 @@ export function FileConverter() {
     setConversionQueue(newQueue);
     setSelectedFiles([]);
 
-    // Process up to 5 files concurrently
     const CONCURRENT_LIMIT = 5;
     const queueCopy = [...newQueue];
     
@@ -153,6 +153,8 @@ export function FileConverter() {
         default: return <History className="h-5 w-5 text-muted-foreground" />;
     }
   }, []);
+
+  const hasFiles = selectedFiles.length > 0 || conversionQueue.length > 0;
 
   return (
     <>
@@ -216,36 +218,54 @@ export function FileConverter() {
 
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader>
-            <CardTitle>Conversion Progress</CardTitle>
+            <CardTitle>Conversion Queue</CardTitle>
             <CardDescription>Track the status of your files.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
-            <ScrollArea className={cn("h-80", conversionQueue.length === 0 && "flex items-center justify-center")}>
-              {conversionQueue.length === 0 ? (
+            <ScrollArea className={cn("h-80", !hasFiles && "flex items-center justify-center")}>
+              {!hasFiles ? (
                 <div className="text-center text-muted-foreground">
-                  <p>Conversion queue is empty.</p>
+                  <p>No files selected.</p>
                   <p className="text-xs mt-1">Upload files to begin.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {selectedFiles.length > 0 && (
-                     <div className="text-sm text-muted-foreground p-2 border-l-2 border-primary">
-                        {selectedFiles.length} file(s) ready. Click Convert to start.
-                     </div>
-                  )}
-                  {conversionQueue.map(item => (
-                    <div key={item.id} className="flex items-center gap-4 p-2 rounded-lg bg-muted/30">
-                      <StatusIcon status={item.status} />
-                      <div className="flex-grow">
-                        <div className="flex justify-between text-sm mb-1 items-center">
-                          <p className="truncate font-medium max-w-[150px] sm:max-w-[250px]">{item.file.name}</p>
-                          <p className="text-muted-foreground flex-shrink-0 capitalize text-xs">{item.status}</p>
+                    <>
+                      <h4 className="text-sm font-medium text-muted-foreground px-2">Ready to Convert ({selectedFiles.length})</h4>
+                      {selectedFiles.map((file, index) => (
+                        <div key={`${file.name}-${index}`} className="flex items-center gap-4 p-2 rounded-lg bg-muted/30">
+                           <FileImage className="h-5 w-5 text-primary" />
+                           <div className="flex-grow">
+                              <p className="truncate font-medium text-sm max-w-[200px] sm:max-w-[300px]">{file.name}</p>
+                              <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
+                           </div>
+                           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeSelectedFile(index)}>
+                              <X className="h-4 w-4" />
+                           </Button>
                         </div>
-                        <Progress value={item.progress} className={cn('h-2', item.status === 'error' && '[&>div]:bg-destructive')} />
-                        {item.status === 'error' && <p className="text-xs text-destructive mt-1 truncate">{item.error}</p>}
-                      </div>
-                    </div>
-                  ))}
+                      ))}
+                    </>
+                  )}
+                  {conversionQueue.length > 0 && (
+                    <>
+                      {selectedFiles.length > 0 && <hr className="border-border my-4" />}
+                      <h4 className="text-sm font-medium text-muted-foreground px-2">Conversion Progress</h4>
+                      {conversionQueue.map(item => (
+                        <div key={item.id} className="flex items-center gap-4 p-2 rounded-lg bg-muted/30">
+                          <StatusIcon status={item.status} />
+                          <div className="flex-grow">
+                            <div className="flex justify-between text-sm mb-1 items-center">
+                              <p className="truncate font-medium max-w-[150px] sm:max-w-[250px]">{item.file.name}</p>
+                              <p className="text-muted-foreground flex-shrink-0 capitalize text-xs">{item.status}</p>
+                            </div>
+                            <Progress value={item.progress} className={cn('h-2', item.status === 'error' && '[&>div]:bg-destructive')} />
+                            {item.status === 'error' && <p className="text-xs text-destructive mt-1 truncate">{item.error}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </ScrollArea>
