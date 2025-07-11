@@ -1,17 +1,16 @@
-
 "use client";
 
-import { useState, useRef, ChangeEvent, useMemo, useEffect } from 'react';
+import { useState, useRef, ChangeEvent, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { UploadCloud, File, FileImage, FileText, History, Hexagon, X, Loader2, CheckCircle2, AlertTriangle, Wand2 } from 'lucide-react';
+import { UploadCloud, FileImage, X, Loader2, CheckCircle2, AlertTriangle, History, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
-import { convertImage } from '@/ai/flows/convert-image-flow';
+import { convertImage, ConvertImageInput, ConvertImageOutput } from '@/ai/flows/convert-image-flow';
 
 type ConversionStatus = 'queued' | 'converting' | 'completed' | 'error';
 
@@ -21,13 +20,7 @@ interface ConversionFile {
   status: ConversionStatus;
   progress: number;
   outputName: string;
-}
-
-interface LogEntry {
-  id: number;
-  message: string;
-  timestamp: string;
-  type: 'info' | 'error' | 'success';
+  error?: string;
 }
 
 const fileToDataUri = (file: File): Promise<string> => {
@@ -53,97 +46,51 @@ export function FileConverter() {
   const [conversionQueue, setConversionQueue] = useState<ConversionFile[]>([]);
   const [outputFormat, setOutputFormat] = useState<string>('png');
   const [isConverting, setIsConverting] = useState<boolean>(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isClient, setIsClient] = useState(false);
   
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const logIdCounter = useRef(0);
   const { toast } = useToast();
-
-  const addLog = (message: string, type: LogEntry['type'] = 'info') => {
-    if (!isClient) return; // Prevent logging on the server
-    setLogs(prev => [
-      {
-        id: logIdCounter.current++,
-        message,
-        timestamp: new Date().toLocaleTimeString(),
-        type,
-      },
-      ...prev
-    ]);
-  };
 
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
       const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
        if (newFiles.length !== Array.from(files).length) {
-        addLog("Some selected files were not images and have been ignored.", "info");
-        toast({ title: "Non-image files ignored", description: "Only image files (PNG, JPEG, etc.) are supported for conversion." });
+        toast({ 
+          title: "Archivos no válidos ignorados", 
+          description: "Solo se admiten archivos de imagen para la conversión.",
+          variant: "destructive"
+        });
       }
       setSelectedFiles(prev => [...prev, ...newFiles]);
-      addLog(`Selected ${newFiles.length} image file(s).`);
     }
+    // Reset file input to allow selecting the same file again
     if(fileInputRef.current) {
         fileInputRef.current.value = "";
     }
   };
 
   const removeSelectedFile = (index: number) => {
-    const fileName = selectedFiles[index].name;
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    addLog(`Removed '${fileName}' from selection.`);
   };
 
-  const handleConvertClick = async () => {
-    if (selectedFiles.length === 0) {
-      toast({ title: "No files selected", description: "Please select image files to convert.", variant: "destructive" });
-      return;
-    }
+  const updateQueueItem = (id: string, updates: Partial<ConversionFile>) => {
+    setConversionQueue(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+  };
 
-    setIsConverting(true);
-    addLog(`Starting conversion for ${selectedFiles.length} file(s) to ${outputFormat.toUpperCase()}.`, 'success');
-
-    const queue: ConversionFile[] = selectedFiles.map((file, index) => {
-        const id = `${file.name}-${file.lastModified}-${index}`;
-        return {
-          id,
-          file,
-          status: 'queued',
-          progress: 0,
-          outputName: `${file.name.split('.').slice(0, -1).join('.')}.${outputFormat}`,
-        };
-    });
+  const performConversion = useCallback(async (item: ConversionFile, format: string) => {
+    updateQueueItem(item.id, { status: 'converting', progress: 25 });
     
-    setConversionQueue(queue);
-    setSelectedFiles([]);
-
-    const conversionPromises = queue.map(item => performConversion(item));
-    await Promise.allSettled(conversionPromises);
-
-    addLog('All conversions finished.', 'success');
-    setIsConverting(false);
-  };
-  
-  const performConversion = async (item: ConversionFile) => {
     try {
-      addLog(`Converting '${item.file.name}' to ${outputFormat.toUpperCase()}...`);
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converting', progress: 25 } : q));
-
       const imageDataUri = await fileToDataUri(item.file);
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: 50 } : q));
-      
+      updateQueueItem(item.id, { progress: 50 });
+
       const result = await convertImage({ 
         imageDataUri, 
-        outputFormat: outputFormat as any,
+        outputFormat: format as ConvertImageInput['outputFormat'],
       });
-
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: 75 } : q));
-
+      updateQueueItem(item.id, { progress: 75 });
+      
+      // Trigger download
       const a = document.createElement('a');
       a.href = result.convertedImageUri;
       a.download = item.outputName;
@@ -151,73 +98,93 @@ export function FileConverter() {
       a.click();
       document.body.removeChild(a);
       
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'completed', progress: 100 } : q));
-      addLog(`Successfully converted and downloaded '${item.file.name}'.`, 'success');
-
+      updateQueueItem(item.id, { status: 'completed', progress: 100 });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      addLog(`Error converting '${item.file.name}': ${errorMessage}`, 'error');
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', progress: 0 } : q));
+      updateQueueItem(item.id, { status: 'error', progress: 0, error: errorMessage });
     }
-  };
-
-  const FileIcon = useMemo(() => ({ file }: { file: File }) => {
-    if (file.type.startsWith('image/')) return <FileImage className="h-5 w-5 text-accent" />;
-    return <File className="h-5 w-5 text-accent" />;
   }, []);
 
+  const handleConvertClick = async () => {
+    if (selectedFiles.length === 0) {
+      toast({ title: "No hay archivos seleccionados", description: "Por favor, selecciona imágenes para convertir.", variant: "destructive" });
+      return;
+    }
+
+    setIsConverting(true);
+    setConversionQueue([]); // Clear previous queue
+
+    const newQueue: ConversionFile[] = selectedFiles.map((file, index) => ({
+      id: `${file.name}-${file.lastModified}-${index}`,
+      file,
+      status: 'queued',
+      progress: 0,
+      outputName: `${file.name.split('.').slice(0, -1).join('.')}.${outputFormat}`,
+    }));
+    
+    setConversionQueue(newQueue);
+    setSelectedFiles([]); // Clear selection
+
+    const conversionPromises = newQueue.map(item => performConversion(item, outputFormat));
+    
+    await Promise.allSettled(conversionPromises);
+
+    setIsConverting(false);
+    toast({ title: "Conversiones finalizadas", description: "Todos los archivos han sido procesados." });
+  };
+  
   const StatusIcon = useMemo(() => ({ status }: { status: ConversionStatus }) => {
     switch (status) {
-        case 'converting': return <Loader2 className="h-5 w-5 animate-spin text-blue-400" />;
-        case 'completed': return <CheckCircle2 className="h-5 w-5 text-green-400" />;
-        case 'error': return <AlertTriangle className="h-5 w-5 text-red-400" />;
+        case 'converting': return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
+        case 'completed': return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+        case 'error': return <AlertTriangle className="h-5 w-5 text-red-500" />;
         default: return <History className="h-5 w-5 text-muted-foreground" />;
     }
   }, []);
 
   return (
-    <div className="w-full max-w-7xl mx-auto flex flex-col gap-8">
-        <div className="flex items-center gap-4">
+    <div className="w-full max-w-6xl mx-auto p-4 md:p-8">
+        <header className="flex items-center gap-4 mb-8">
             <div className="bg-primary p-3 rounded-lg shadow-md">
                 <Wand2 className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-                <h1 className="text-3xl font-bold font-headline text-primary-foreground/90">ParaConverter</h1>
-                <p className="text-muted-foreground">Fast, AI-powered file conversion.</p>
+                <h1 className="text-3xl font-bold text-foreground">ParaConverter</h1>
+                <p className="text-muted-foreground">Conversión de archivos rápida y multihilo.</p>
             </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-            <div className="lg:col-span-2 flex flex-col gap-8">
-                <Card className="flex-grow">
+        <main className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="flex flex-col gap-8">
+                <Card>
                     <CardHeader>
-                        <CardTitle>1. Select Images</CardTitle>
-                        <CardDescription>Choose one or more images to convert.</CardDescription>
+                        <CardTitle>1. Seleccionar Archivos</CardTitle>
+                        <CardDescription>Arrastra o selecciona las imágenes que quieres convertir.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Label htmlFor="file-upload" className="w-full cursor-pointer">
-                            <div className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg border-border hover:bg-muted transition-colors">
-                                <UploadCloud className="h-12 w-12 text-muted-foreground" />
+                        <Label htmlFor="file-upload" className="w-full cursor-pointer group">
+                            <div className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg border-border group-hover:border-primary transition-colors">
+                                <UploadCloud className="h-12 w-12 text-muted-foreground group-hover:text-primary transition-colors" />
                                 <p className="mt-2 text-sm text-muted-foreground">
-                                    <span className="font-semibold text-accent">Click to upload</span> or drag and drop
+                                    <span className="font-semibold text-primary">Haz clic para subir</span> o arrastra y suelta
                                 </p>
-                                <p className="text-xs text-muted-foreground">PNG, JPG, WEBP supported</p>
+                                <p className="text-xs text-muted-foreground">Soporta PNG, JPG, WEBP</p>
                             </div>
                         </Label>
                         <input id="file-upload" ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelect} accept="image/*" />
                         
                         {selectedFiles.length > 0 && (
                             <div className="mt-4">
-                                <h3 className="font-medium mb-2">Selected files:</h3>
-                                <ScrollArea className="h-40 w-full rounded-md border p-2">
+                                <h3 className="font-medium mb-2 text-sm">Archivos seleccionados:</h3>
+                                <ScrollArea className="h-32 w-full rounded-md border p-2">
                                     {selectedFiles.map((file, index) => (
                                         <div key={`${file.name}-${index}`} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 text-sm">
                                             <div className="flex items-center gap-2 truncate">
-                                                <FileIcon file={file} />
+                                                <FileImage className="h-5 w-5 text-primary" />
                                                 <span className="truncate">{file.name}</span>
                                             </div>
                                             <div className="flex items-center gap-2 flex-shrink-0">
-                                                <span className="text-muted-foreground">{formatBytes(file.size)}</span>
+                                                <span className="text-xs text-muted-foreground">{formatBytes(file.size)}</span>
                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeSelectedFile(index)}>
                                                     <X className="h-4 w-4" />
                                                 </Button>
@@ -232,13 +199,14 @@ export function FileConverter() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>2. Choose Format</CardTitle>
-                        <CardDescription>Select the desired output format.</CardDescription>
+                        <CardTitle>2. Configurar y Convertir</CardTitle>
+                        <CardDescription>Elige el formato de salida y comienza el proceso.</CardDescription>
                     </CardHeader>
                     <CardContent>
+                        <Label htmlFor="output-format">Formato de salida</Label>
                         <Select value={outputFormat} onValueChange={setOutputFormat}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select output format" />
+                            <SelectTrigger id="output-format">
+                                <SelectValue placeholder="Selecciona un formato" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="png">PNG</SelectItem>
@@ -248,78 +216,53 @@ export function FileConverter() {
                         </Select>
                     </CardContent>
                     <CardFooter>
-                         <Button onClick={handleConvertClick} disabled={isConverting || selectedFiles.length === 0} className="w-full bg-primary hover:bg-primary/90">
+                         <Button onClick={handleConvertClick} disabled={isConverting || selectedFiles.length === 0} className="w-full">
                             {isConverting ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Converting...
+                                    Procesando...
                                 </>
                             ) : (
-                                "Convert Files"
+                                "Convertir Archivos"
                             )}
                         </Button>
                     </CardFooter>
                 </Card>
             </div>
 
-            <div className="lg:col-span-3 flex flex-col gap-8">
-                <Card className="flex-grow">
-                    <CardHeader>
-                        <CardTitle>Conversion Progress</CardTitle>
-                        <CardDescription>Track the progress of your file conversions.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ScrollArea className={cn("h-64", conversionQueue.length === 0 && "flex items-center justify-center")}>
-                            {conversionQueue.length === 0 ? (
-                                <p className="text-muted-foreground text-center">Your conversion queue is empty.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                {conversionQueue.map(item => (
-                                    <div key={item.id} className="flex items-center gap-4">
-                                        <StatusIcon status={item.status} />
-                                        <div className="flex-grow">
-                                            <div className="flex justify-between text-sm mb-1">
-                                                <p className="truncate font-medium">{item.file.name}</p>
-                                                <p className="text-muted-foreground flex-shrink-0">{item.status}</p>
-                                            </div>
-                                            <Progress value={item.progress} className={cn(item.status === 'error' && '[&>div]:bg-red-500')} />
+            <Card className="lg:col-span-1 flex flex-col">
+                <CardHeader>
+                    <CardTitle>Progreso de Conversión</CardTitle>
+                    <CardDescription>Sigue el estado de tus archivos en tiempo real.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                    <ScrollArea className={cn("h-96", conversionQueue.length === 0 && "flex items-center justify-center")}>
+                        {conversionQueue.length === 0 ? (
+                            <div className="text-center text-muted-foreground">
+                                <p>La cola de conversión está vacía.</p>
+                                <p className="text-xs mt-1">Sube archivos para empezar.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                            {conversionQueue.map(item => (
+                                <div key={item.id} className="flex items-center gap-4 p-2 rounded-lg bg-muted/30">
+                                    <StatusIcon status={item.status} />
+                                    <div className="flex-grow">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <p className="truncate font-medium max-w-[200px]">{item.file.name}</p>
+                                            <p className="text-muted-foreground flex-shrink-0 capitalize">{item.status}</p>
                                         </div>
+                                        <Progress value={item.progress} className={cn(item.status === 'error' && '[&>div]:bg-red-500')} />
+                                        {item.status === 'error' && <p className="text-xs text-red-500 mt-1">{item.error}</p>}
                                     </div>
-                                ))}
-                                </div>
-                            )}
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-2">
-                            <History className="text-muted-foreground" />
-                            <CardTitle>Conversion Log</CardTitle>
-                        </div>
-                        <CardDescription>Detailed log of all conversion activities.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ScrollArea className="h-48">
-                           <div className="space-y-3">
-                            {logs.map(log => (
-                                <div key={log.id} className="flex items-start gap-3 text-sm">
-                                    <span className="font-mono text-muted-foreground/70">{log.timestamp}</span>
-                                    <p className={cn(
-                                        log.type === 'error' && 'text-red-400',
-                                        log.type === 'success' && 'text-green-400'
-                                    )}>
-                                        {log.message}
-                                    </p>
                                 </div>
                             ))}
-                           </div>
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
+                            </div>
+                        )}
+                    </ScrollArea>
+                </CardContent>
+            </Card>
+        </main>
     </div>
   );
 }

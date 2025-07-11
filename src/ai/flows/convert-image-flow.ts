@@ -11,7 +11,6 @@
 import { z } from 'zod';
 import { Worker } from 'worker_threads';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 const ConvertImageInputSchema = z.object({
   imageDataUri: z
@@ -41,15 +40,14 @@ export async function convertImage(input: ConvertImageInput): Promise<ConvertIma
 
     worker.on('message', (result: ConvertImageOutput | { error: string }) => {
       if ('error' in result) {
-        reject(new Error(`Conversion failed: ${result.error}`));
+        reject(new Error(result.error));
       } else {
         resolve(result);
       }
     });
 
     worker.on('error', (error) => {
-      console.error(`Worker error: ${error.message}`);
-      reject(new Error(`Conversion failed: ${error.message}`));
+      reject(new Error(`Worker error: ${error.message}`));
     });
 
     worker.on('exit', (code) => {

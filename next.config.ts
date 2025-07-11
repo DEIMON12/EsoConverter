@@ -19,15 +19,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     // This is the correct configuration to handle worker threads in Next.js
     if (isServer) {
         const entry = config.entry as () => Promise<Record<string, string[] | string>>;
-        config.entry = () => {
-            return entry().then((entries) => {
-                entries['workers/image-converter-worker'] = path.resolve(process.cwd(), 'src/workers/image-converter-worker.ts');
-                return entries;
-            });
+        config.entry = async () => {
+            const entries = await entry();
+            const workerPath = path.resolve(process.cwd(), 'src/workers/image-converter-worker.ts');
+            // This ensures the worker is compiled as a separate chunk.
+            entries['workers/image-converter-worker'] = workerPath;
+            return entries;
         };
     }
     return config;
