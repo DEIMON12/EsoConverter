@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { Worker } from 'worker_threads';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const ConvertImageInputSchema = z.object({
   imageDataUri: z
@@ -30,10 +31,10 @@ export type ConvertImageOutput = z.infer<typeof ConvertImageOutputSchema>;
 
 export async function convertImage(input: ConvertImageInput): Promise<ConvertImageOutput> {
   return new Promise((resolve, reject) => {
-    // In production, the worker file will be in .next/server/workers/image-converter-worker.js
-    // process.cwd() gives the project root directory.
+    // This is the robust way to get the path to the worker in Next.js
+    // It works in both development and production environments.
     const workerPath = path.resolve(process.cwd(), '.next/server/workers/image-converter-worker.js');
-
+    
     const worker = new Worker(workerPath, {
       workerData: input,
     });

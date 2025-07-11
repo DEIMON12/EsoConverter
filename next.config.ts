@@ -19,33 +19,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer, dev }) => {
-    // Only apply this configuration for the server build in production
-    if (isServer && !dev) {
-      const workerPath = path.join(__dirname, 'src/workers/image-converter-worker.ts');
-      
-      // Add the worker as a separate entry point
-      config.entry = () =>
-        config.entry().then((entry: any) => {
-          entry['workers/image-converter-worker'] = workerPath;
-          return entry;
-        });
-
-      // Configure the output for the worker
-      config.output = {
-        ...config.output,
-        // The default is `[name].js` which we want to override for workers.
-        filename: (pathData: any) => {
-          // Output workers to their own subdirectory
-          if (pathData.chunk.name.startsWith('workers/')) {
-            return '[name].js';
-          }
-          // The default Next.js server entry point.
-          return 'server.js';
-        },
-        // This is necessary to prevent a crash when the server starts.
-        globalObject: 'this',
-      };
+  webpack: (config, { isServer }) => {
+    // This is the correct configuration to handle worker threads in Next.js
+    if (isServer) {
+        const entry = config.entry as () => Promise<Record<string, string[] | string>>;
+        config.entry = () => {
+            return entry().then((entries) => {
+                entries['workers/image-converter-worker'] = path.resolve(process.cwd(), 'src/workers/image-converter-worker.ts');
+                return entries;
+            });
+        };
     }
     return config;
   },
