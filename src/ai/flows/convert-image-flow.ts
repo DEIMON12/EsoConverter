@@ -30,18 +30,20 @@ export type ConvertImageOutput = z.infer<typeof ConvertImageOutputSchema>;
 
 export async function convertImage(input: ConvertImageInput): Promise<ConvertImageOutput> {
   return new Promise((resolve, reject) => {
-    // __dirname will be the output directory of the built server file,
-    // e.g., .next/server/app/
-    // We need to construct a path to our worker file from there.
-    // The worker file will be in .next/server/workers/image-converter-worker.js
+    // In production, the worker file will be in .next/server/workers/image-converter-worker.js
+    // process.cwd() gives the project root directory.
     const workerPath = path.resolve(process.cwd(), '.next/server/workers/image-converter-worker.js');
 
     const worker = new Worker(workerPath, {
       workerData: input,
     });
 
-    worker.on('message', (result: ConvertImageOutput) => {
-      resolve(result);
+    worker.on('message', (result: ConvertImageOutput | { error: string }) => {
+      if ('error' in result) {
+        reject(new Error(`Conversion failed: ${result.error}`));
+      } else {
+        resolve(result);
+      }
     });
 
     worker.on('error', (error) => {

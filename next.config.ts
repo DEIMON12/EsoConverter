@@ -20,18 +20,23 @@ const nextConfig: NextConfig = {
     ],
   },
   webpack: (config, { isServer, dev }) => {
+    // Only apply this configuration for the server build in production
     if (isServer && !dev) {
       const workerPath = path.join(__dirname, 'src/workers/image-converter-worker.ts');
       
-      config.entry = {
-        ...config.entry,
-        'workers/image-converter-worker': workerPath,
-      };
+      // Add the worker as a separate entry point
+      config.entry = () =>
+        config.entry().then((entry: any) => {
+          entry['workers/image-converter-worker'] = workerPath;
+          return entry;
+        });
 
+      // Configure the output for the worker
       config.output = {
         ...config.output,
         // The default is `[name].js` which we want to override for workers.
         filename: (pathData: any) => {
+          // Output workers to their own subdirectory
           if (pathData.chunk.name.startsWith('workers/')) {
             return '[name].js';
           }
