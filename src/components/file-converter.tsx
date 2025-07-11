@@ -65,14 +65,16 @@ export function FileConverter() {
   const { toast } = useToast();
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
-    if (!isClient) return;
-    const newLog: LogEntry = {
-      id: logIdCounter.current++,
-      message,
-      timestamp: new Date().toLocaleTimeString(),
-      type,
-    };
-    setLogs(prev => [newLog, ...prev]);
+    if (!isClient) return; // Prevent logging on the server
+    setLogs(prev => [
+      {
+        id: logIdCounter.current++,
+        message,
+        timestamp: new Date().toLocaleTimeString(),
+        type,
+      },
+      ...prev
+    ]);
   };
 
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
