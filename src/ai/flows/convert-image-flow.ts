@@ -1,16 +1,14 @@
 
 'use server';
 /**
- * @fileOverview An image conversion utility that uses worker threads.
+ * @fileOverview An image conversion utility that uses a dedicated API route.
  *
- * - convertImage - A function that handles the image conversion process using a worker thread.
+ * - convertImage - A function that calls an API endpoint to handle image conversion.
  * - ConvertImageInput - The input type for the convertImage function.
  * - ConvertImageOutput - The return type for the convertImage function.
  */
 
 import { z } from 'zod';
-import { Worker } from 'worker_threads';
-import path from 'path';
 
 const ConvertImageInputSchema = z.object({
   imageDataUri: z
@@ -27,33 +25,25 @@ const ConvertImageOutputSchema = z.object({
 });
 export type ConvertImageOutput = z.infer<typeof ConvertImageOutputSchema>;
 
-
+// This function now calls our new API route for conversion.
 export async function convertImage(input: ConvertImageInput): Promise<ConvertImageOutput> {
-  return new Promise((resolve, reject) => {
-    // This is the robust way to get the path to the worker in Next.js
-    // It works in both development and production environments.
-    const workerPath = path.resolve(process.cwd(), '.next/server/workers/image-converter-worker.js');
-    
-    const worker = new Worker(workerPath, {
-      workerData: input,
-    });
-
-    worker.on('message', (result: ConvertImageOutput | { error: string }) => {
-      if ('error' in result) {
-        reject(new Error(result.error));
-      } else {
-        resolve(result);
-      }
-    });
-
-    worker.on('error', (error) => {
-      reject(new Error(`Worker error: ${error.message}`));
-    });
-
-    worker.on('exit', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Worker stopped with exit code ${code}`));
-      }
-    });
+  // In a real application, you would get the base URL from environment variables.
+  // For this environment, we assume the app runs on localhost:9002.
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+  
+  const response = await fetch(`${baseUrl}/api/convert`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
   });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Conversion failed');
+  }
+
+  const result: ConvertImageOutput = await response.json();
+  return result;
 }
