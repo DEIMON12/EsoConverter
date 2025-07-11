@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, ChangeEvent, useMemo } from 'react';
@@ -10,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { UploadCloud, File, FileImage, FileText, History, Hexagon, X, Loader2, CheckCircle2, AlertTriangle, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
+import { convertImage } from '@/ai/flows/convert-image-flow';
 
 type ConversionStatus = 'queued' | 'converting' | 'completed' | 'error';
 
@@ -28,7 +30,14 @@ interface LogEntry {
   type: 'info' | 'error' | 'success';
 }
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+const fileToDataUri = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
 
 function formatBytes(bytes: number, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
@@ -42,7 +51,7 @@ function formatBytes(bytes: number, decimals = 2) {
 export function FileConverter() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [conversionQueue, setConversionQueue] = useState<ConversionFile[]>([]);
-  const [outputFormat, setOutputFormat] = useState<string>('pdf');
+  const [outputFormat, setOutputFormat] = useState<string>('png');
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
@@ -63,11 +72,14 @@ export function FileConverter() {
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const newFiles = Array.from(files);
+      const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+       if (newFiles.length !== Array.from(files).length) {
+        addLog("Some selected files were not images and have been ignored.", "info");
+        toast({ title: "Non-image files ignored", description: "Only image files (PNG, JPEG, etc.) are supported for conversion." });
+      }
       setSelectedFiles(prev => [...prev, ...newFiles]);
-      addLog(`Selected ${newFiles.length} file(s).`);
+      addLog(`Selected ${newFiles.length} image file(s).`);
     }
-    // Reset file input to allow selecting the same file again
     if(fileInputRef.current) {
         fileInputRef.current.value = "";
     }
@@ -81,7 +93,7 @@ export function FileConverter() {
 
   const handleConvertClick = async () => {
     if (selectedFiles.length === 0) {
-      toast({ title: "No files selected", description: "Please select files to convert.", variant: "destructive" });
+      toast({ title: "No files selected", description: "Please select image files to convert.", variant: "destructive" });
       return;
     }
 
@@ -99,47 +111,47 @@ export function FileConverter() {
     setConversionQueue(queue);
     setSelectedFiles([]);
 
-    const conversionPromises = queue.map(item => simulateConversion(item));
+    const conversionPromises = queue.map(item => performConversion(item));
     await Promise.allSettled(conversionPromises);
 
     addLog('All conversions finished.', 'success');
     setIsConverting(false);
   };
   
-  const simulateConversion = async (item: ConversionFile) => {
+  const performConversion = async (item: ConversionFile) => {
     try {
       addLog(`Converting '${item.file.name}' to ${outputFormat.toUpperCase()}...`);
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converting' } : q));
+      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converting', progress: 25 } : q));
 
-      for (let i = 1; i <= 10; i++) {
-        await delay(150 + Math.random() * 200);
-        setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: i * 10 } : q));
-      }
-
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'completed' } : q));
-      addLog(`Successfully converted '${item.file.name}'.`, 'success');
+      const imageDataUri = await fileToDataUri(item.file);
+      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: 50 } : q));
       
-      // Simulate file download
-      const blob = new Blob([`Simulated ${outputFormat.toUpperCase()} content for ${item.file.name}`], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
+      const result = await convertImage({ 
+        imageDataUri, 
+        outputFormat: outputFormat as any,
+      });
+
+      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, progress: 75 } : q));
+
       const a = document.createElement('a');
-      a.href = url;
+      a.href = result.convertedImageUri;
       a.download = item.outputName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      
+      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'completed', progress: 100 } : q));
+      addLog(`Successfully converted and downloaded '${item.file.name}'.`, 'success');
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       addLog(`Error converting '${item.file.name}': ${errorMessage}`, 'error');
-      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error' } : q));
+      setConversionQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', progress: 0 } : q));
     }
   };
 
   const FileIcon = useMemo(() => ({ file }: { file: File }) => {
     if (file.type.startsWith('image/')) return <FileImage className="h-5 w-5 text-accent" />;
-    if (file.type === 'application/pdf') return <FileText className="h-5 w-5 text-accent" />;
     return <File className="h-5 w-5 text-accent" />;
   }, []);
 
@@ -160,7 +172,7 @@ export function FileConverter() {
             </div>
             <div>
                 <h1 className="text-3xl font-bold font-headline text-primary-foreground/90">ParaConverter</h1>
-                <p className="text-muted-foreground">Fast, parallel file conversion.</p>
+                <p className="text-muted-foreground">Fast, AI-powered file conversion.</p>
             </div>
         </div>
 
@@ -168,8 +180,8 @@ export function FileConverter() {
             <div className="lg:col-span-2 flex flex-col gap-8">
                 <Card className="flex-grow">
                     <CardHeader>
-                        <CardTitle>1. Select Files</CardTitle>
-                        <CardDescription>Choose one or more files to convert.</CardDescription>
+                        <CardTitle>1. Select Images</CardTitle>
+                        <CardDescription>Choose one or more images to convert.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Label htmlFor="file-upload" className="w-full cursor-pointer">
@@ -178,10 +190,10 @@ export function FileConverter() {
                                 <p className="mt-2 text-sm text-muted-foreground">
                                     <span className="font-semibold text-accent">Click to upload</span> or drag and drop
                                 </p>
-                                <p className="text-xs text-muted-foreground">Any file type supported</p>
+                                <p className="text-xs text-muted-foreground">PNG, JPG, WEBP supported</p>
                             </div>
                         </Label>
-                        <input id="file-upload" ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelect} />
+                        <input id="file-upload" ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileSelect} accept="image/*" />
                         
                         {selectedFiles.length > 0 && (
                             <div className="mt-4">
@@ -218,12 +230,12 @@ export function FileConverter() {
                                 <SelectValue placeholder="Select output format" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="pdf">PDF</SelectItem>
-                                <SelectItem value="jpeg">JPEG</SelectItem>
                                 <SelectItem value="png">PNG</SelectItem>
+                                <SelectItem value="jpeg">JPEG</SelectItem>
                                 <SelectItem value="webp">WEBP</SelectItem>
-                                <SelectItem value="mp3">MP3</SelectItem>
-                                <SelectItem value="wav">WAV</SelectItem>
+                                <SelectItem value="pdf" disabled>PDF (soon)</SelectItem>
+                                <SelectItem value="mp3" disabled>MP3 (soon)</SelectItem>
+                                <SelectItem value="wav" disabled>WAV (soon)</SelectItem>
                             </SelectContent>
                         </Select>
                     </CardContent>
