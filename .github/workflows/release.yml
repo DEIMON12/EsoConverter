@@ -1,0 +1,52 @@
+# Genera ESOConverter-<versión>.exe en una máquina Windows de GitHub y lo publica en Releases.
+#
+# Para publicar una versión:
+#   1. Cambia "version" en package.json (por ejemplo a 1.1.0) y haz commit.
+#   2. git tag v1.1.0 && git push origin v1.1.0
+#
+# También se puede lanzar a mano desde la pestaña Actions ("Run workflow");
+# en ese caso el .exe queda como artefacto descargable, sin crear release.
+
+name: Build Windows app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build static site and Windows executable
+        run: npm run dist -- --publish never
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ESOConverter-windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true

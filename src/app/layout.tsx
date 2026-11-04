@@ -1,10 +1,12 @@
 import type {Metadata} from 'next';
+// Fuente incluida en el paquete: la app no descarga nada de internet.
+import '@fontsource-variable/inter';
 import './globals.css';
 import { ToasterWrapper } from "@/components/toaster-wrapper";
 
 export const metadata: Metadata = {
   title: 'ESOConverter',
-  description: 'A multi-threaded file conversion utility for efficiently changing file types.',
+  description: 'Offline, multi-file image converter. Your files never leave your computer.',
 };
 
 export default function RootLayout({
@@ -14,11 +16,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning={true}>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet"></link>
-      </head>
       <body className="font-body antialiased" suppressHydrationWarning>
         {children}
         <ToasterWrapper />
