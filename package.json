@@ -1,7 +1,7 @@
 {
   "name": "eso-converter",
   "productName": "ESOConverter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Offline, multi-file image converter. Your files never leave your computer.",
   "author": "DEIMON12",
   "private": true,
